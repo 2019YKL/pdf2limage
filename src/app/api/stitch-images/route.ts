@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { join } from 'path';
+import path, { join } from 'path';
 import { writeFile, mkdir, readFile, unlink } from 'fs/promises';
 import { existsSync, statSync } from 'fs';
 import sharp from 'sharp';
@@ -70,7 +70,6 @@ export async function POST(request: NextRequest) {
     // 清理旧的输出文件 (保留最近2小时内的文件)
     try {
       const fs = require('fs');
-      const path = require('path');
       
       if (existsSync(outputDir)) {
         const files = fs.readdirSync(outputDir);
@@ -125,6 +124,19 @@ export async function POST(request: NextRequest) {
 
     const imageMetadata = await Promise.all(imageMetadataPromises);
     logger.info('All image metadata loaded successfully');
+
+    // Sort image paths by filename (to maintain order)
+    imageMetadata.sort((a, b) => {
+      const aName = path.basename(a.path);
+      const bName = path.basename(b.path);
+      
+      // Make sure lastpic.png is always the last image
+      if (aName === 'lastpic.png') return 1;
+      if (bName === 'lastpic.png') return -1;
+      
+      // Otherwise sort by name
+      return aName.localeCompare(bName);
+    });
 
     // Find the maximum width
     const maxWidth = Math.max(...imageMetadata.map(img => img.width || 0));

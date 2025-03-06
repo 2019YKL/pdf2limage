@@ -118,14 +118,23 @@ export default function Home() {
         formData.append('images', new File([blob], `page-${index + 1}.png`, { type: 'image/png' }));
       });
       
-      // 获取lastpic.png并添加到图像数组的末尾
+      // 获取lastpic.png并添加到图像数组的末尾 - 无论页数多少都添加
       try {
-        const response = await fetch('/lastpic.png');
+        let lastPicPath = '/pic/lastpic.png'; // 原始路径
+        let response = await fetch(lastPicPath);
+        
+        // 如果原始路径失败，尝试备用路径
+        if (!response.ok) {
+          lastPicPath = '/lastpic.png';
+          response = await fetch(lastPicPath);
+        }
+        
         if (response.ok) {
           const lastPicBlob = await response.blob();
           formData.append('images', new File([lastPicBlob], 'lastpic.png', { type: 'image/png' }));
+          console.log('成功添加lastpic.png到图像队列');
         } else {
-          console.error('Failed to fetch lastpic.png');
+          console.error('Failed to fetch lastpic.png, tried paths:', '/pic/lastpic.png', '/lastpic.png');
         }
       } catch (error) {
         console.error('Error fetching lastpic.png:', error);
