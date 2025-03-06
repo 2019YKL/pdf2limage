@@ -3,255 +3,187 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import Image from "next/image";
+import * as pdfjs from 'pdfjs-dist';
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
-  const [pdfDocument, setPdfDocument] = useState<any | null>(null);
-  const [pageImages, setPageImages] = useState<string[]>([]);
-  const [stitchedImage, setStitchedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
-  const [pageCount, setPageCount] = useState(0);
+  const [stitchedImage, setStitchedImage] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [pdfjs, setPdfjs] = useState<any | null>(null);
+  const [pageCount, setPageCount] = useState(0);
   const [imageQuality, setImageQuality] = useState<number | null>(null);
   const [imageSize, setImageSize] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const loadPdfJs = async () => {
+    const loadPdfjs = async () => {
       try {
-        // 动态导入 PDF.js
-        const pdfjs = await import('pdfjs-dist');
-        
         // 设置 worker 为本地文件
         const workerSrc = '/pdf.worker.min.mjs';
         console.log('Setting PDF.js worker to:', workerSrc);
         pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
         
         console.log('PDF.js loaded successfully');
-        setPdfjs(pdfjs);
-      } catch (error) {
-        console.error('Failed to load PDF.js:', error);
-        setError(`Failed to load PDF.js library: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } catch (err) {
+        console.error('Error initializing PDF.js:', err);
       }
     };
     
-    loadPdfJs();
+    loadPdfjs();
   }, []);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      setFile(acceptedFiles[0]);
-      setPageImages([]);
-      setStitchedImage(null);
-      setError(null);
-      setPdfDocument(null);
-      setPageCount(0);
-      setCurrentPage(0);
-      setProgress(0);
+    const file = acceptedFiles[0];
+    if (file?.type !== 'application/pdf') {
+      setError('Please upload a PDF file');
+      return;
     }
+
+    setFile(file);
+    setError(null);
+    setStitchedImage(null);
+    setProgress(0);
+    setCurrentPage(0);
+    setPageCount(0);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       'application/pdf': ['.pdf']
-    },
-    maxFiles: 1
+    }
   });
 
-  const loadPDF = useCallback(async (file: File) => {
-    if (!pdfjs) {
-      setError('PDF.js library is not loaded yet. Please try again in a moment.');
-      return null;
-    }
-  
+  const handleConversion = async () => {
+    if (!file || !canvasRef.current) return;
+    
     try {
+      setIsProcessing(true);
+      setError(null);
+      setProgress(0);
+      setStitchedImage(null);
+      
+      // Load the PDF file
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-      setPageCount(pdf.numPages);
-      setPdfDocument(pdf);
-      return pdf;
-    } catch (error) {
-      console.error('Error loading PDF:', error);
-      setError(`PDF 加载失败: ${error instanceof Error ? error.message : '未知错误'}`);
-      return null;
-    }
-  }, [pdfjs]);
-
-  const renderPageToImage = useCallback(async (pdf: any, pageNumber: number) => {
-    try {
-      const page = await pdf.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: 2.0 });
       
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      
-      if (!context) {
-        throw new Error('无法获取 canvas 上下文');
-      }
-      
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      
-      await page.render({
-        canvasContext: context,
-        viewport
-      }).promise;
-      
-      const imageData = canvas.toDataURL('image/png');
-      return imageData;
-    } catch (error) {
-      console.error(`Error rendering page ${pageNumber}:`, error);
-      throw error;
-    }
-  }, []);
-
-  const handleConversion = async () => {
-    if (!file || isProcessing || !pdfjs) return;
-    
-    setIsProcessing(true);
-    setError(null);
-    setStitchedImage(null);
-    setCurrentPage(0);
-    setProgress(0);
-    
-    try {
-      // Load the PDF file
-      const fileData = await file.arrayBuffer();
-      const pdfDoc = await pdfjs.getDocument({ data: fileData }).promise;
-      const totalPages = pdfDoc.numPages;
+      // Get total page count and set max to 30
+      const totalPages = pdf.numPages;
       setPageCount(totalPages);
       
-      // Check if PDF exceeds page limit
-      const pageLimit = 30;
-      const hasExceededLimit = totalPages > pageLimit;
-      const pagesToProcess = hasExceededLimit ? pageLimit : totalPages;
+      // We'll convert all pages, but limit to 30 for processing
+      const pagesToProcess = Math.min(totalPages, 30);
       
-      const canvas = canvasRef.current;
-      if (!canvas) throw new Error("Canvas element not found");
+      // Generate images for each page
+      const imageDataArray: Blob[] = [];
       
-      // Create a temporary directory to store the extracted images
-      const timestamp = Date.now();
-      const tempDirName = `pdf-extract-${timestamp}`;
-      const formData = new FormData();
-      formData.append('tempDirName', tempDirName);
-      
-      // Loop through each page and convert to an image
       for (let i = 1; i <= pagesToProcess; i++) {
         setCurrentPage(i);
         
-        const page = await pdfDoc.getPage(i);
-        const viewport = page.getViewport({ scale: 2.0 });
+        // Render PDF page to canvas
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 2 });
         
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        
+        const canvas = canvasRef.current;
         const context = canvas.getContext('2d');
-        if (!context) throw new Error("Could not get canvas context");
+        
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
         
         await page.render({
-          canvasContext: context,
+          canvasContext: context!,
           viewport: viewport
         }).promise;
         
-        const imageData = canvas.toDataURL('image/png');
-        const blob = await (await fetch(imageData)).blob();
+        // Convert canvas to blob
+        const blob = await new Promise<Blob>((resolve) => {
+          canvas.toBlob((blob) => {
+            resolve(blob!);
+          }, 'image/png');
+        });
         
-        formData.append('images', blob, `page-${i.toString().padStart(3, '0')}.png`);
-        setProgress(Math.floor((i / pagesToProcess) * 50)); // First 50% of progress
+        imageDataArray.push(blob);
+        
+        // Update progress
+        setProgress(Math.round((i / pagesToProcess) * 90)); // Save 10% for stitching
       }
       
-      // If exceeded limit, add the lastpic.png 
-      if (hasExceededLimit) {
-        try {
-          const lastpicResponse = await fetch('/pic/lastpic.png');
-          if (lastpicResponse.ok) {
-            const lastpicBlob = await lastpicResponse.blob();
-            formData.append('images', lastpicBlob, `page-${(pagesToProcess + 1).toString().padStart(3, '0')}.png`);
-          } else {
-            console.warn('Could not fetch lastpic.png');
-          }
-        } catch (error) {
-          console.error('Error adding lastpic.png:', error);
+      // 创建一个表单数据对象
+      const formData = new FormData();
+      
+      // 添加所有图像数据
+      imageDataArray.forEach((blob, index) => {
+        formData.append('images', new File([blob], `page-${index + 1}.png`, { type: 'image/png' }));
+      });
+      
+      // 获取lastpic.png并添加到图像数组的末尾
+      try {
+        const response = await fetch('/lastpic.png');
+        if (response.ok) {
+          const lastPicBlob = await response.blob();
+          formData.append('images', new File([lastPicBlob], 'lastpic.png', { type: 'image/png' }));
+        } else {
+          console.error('Failed to fetch lastpic.png');
         }
+      } catch (error) {
+        console.error('Error fetching lastpic.png:', error);
       }
       
-      // Stitch the images together
-      setProgress(55); // Start of stitching process
+      // Set quality and add temp directory name
+      formData.append('quality', '90');
+      formData.append('tempDirName', `pdf-${Date.now()}`);
       
-      formData.append('quality', '90'); // Default quality
+      // Send to API for stitching
+      setProgress(95); // Almost done
       
-      const response = await fetch('/api/stitch-images', {
+      const stitchResponse = await fetch('/api/stitch-images', {
         method: 'POST',
         body: formData
       });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to stitch images: ${errorText}`);
+      if (!stitchResponse.ok) {
+        const errorData = await stitchResponse.json();
+        throw new Error(`Stitching failed: ${errorData.error || 'Unknown error'}`);
       }
       
-      const result = await response.json();
+      const result = await stitchResponse.json();
+      
       setStitchedImage(result.imageUrl);
-      setImageSize(result.fileSize);
-      setImageQuality(result.quality);
       setProgress(100);
+      setImageQuality(result.quality);
+      setImageSize(result.fileSize);
+      
     } catch (error) {
       console.error('Conversion error:', error);
-      setError(error instanceof Error ? error.message : String(error));
+      setError(`Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const uploadImage = async (imageData: string, sessionId: string, pageIndex: number): Promise<string> => {
-    try {
-      const response = await fetch(imageData);
-      const blob = await response.blob();
-
-      const formData = new FormData();
-      formData.append('image', blob, `page-${pageIndex}.png`);
-      formData.append('sessionId', sessionId);
-      formData.append('pageIndex', pageIndex.toString());
-
-      const uploadResponse = await fetch('/api/upload-image', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        throw new Error(errorData.details || '图像上传失败');
-      }
-
-      const result = await uploadResponse.json();
-      return result.imagePath;
-    } catch (error) {
-      console.error(`Error uploading image for page ${pageIndex}:`, error);
-      throw error;
-    }
-  };
-
   return (
-    <div className="flex flex-col min-h-screen bg-[#0BA4F9]">
+    <div className="flex flex-col min-h-screen bg-gradient-to-br from-[#0BA4F9] via-[#0f89dc] to-[#0769ba]">
       {/* 背景图案 */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-24 -right-24 w-96 h-96 bg-white opacity-10 rounded-full blur-2xl"></div>
         <div className="absolute bottom-36 -left-20 w-72 h-72 bg-white opacity-10 rounded-full blur-xl"></div>
         <div className="absolute top-1/3 left-1/3 w-48 h-48 bg-white opacity-20 rounded-full blur-md"></div>
+        <div className="absolute top-1/4 right-1/4 w-32 h-32 bg-[#78c6ff] opacity-20 rounded-full blur-lg"></div>
+        <div className="absolute bottom-1/4 right-1/3 w-40 h-40 bg-[#00d9ff] opacity-10 rounded-full blur-xl"></div>
       </div>
 
       <main className="container mx-auto px-4 py-12 flex-grow relative z-10">
         <div className="max-w-3xl mx-auto">
           {/* 标题 */}
-          <h1 className="text-4xl font-bold text-center text-white mb-8">PDF to Long Image</h1>
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-white mb-2">PDF to Long Image</h1>
+            <p className="text-white/70">Convert your PDF documents into a beautiful single image</p>
+          </div>
           
           {/* 主内容区 */}
-          <div className="backdrop-blur-xl bg-white/20 rounded-xl shadow-xl p-8 mb-8 border border-white/30">
+          <div className="backdrop-blur-xl bg-white/20 rounded-xl shadow-md p-8 mb-8 border border-white/30">
             {/* 上传区域 */}
             <div 
               {...getRootProps()} 
@@ -271,17 +203,17 @@ export default function Home() {
                 <p className="text-lg font-medium text-white">
                   {isDragActive ? "Drop your PDF here" : "Drag & drop your PDF"}
                 </p>
-                <button className="mt-2 px-6 py-2 bg-white/20 backdrop-blur-md text-white rounded-full hover:bg-white/30 transition-all border border-white/30">
+                <button className="mt-2 px-6 py-2 bg-white/30 backdrop-blur-md text-white rounded-full hover:bg-white/40 transition-all border border-white/40">
                   Choose File
                 </button>
               </div>
             </div>
 
             {file && (
-              <div className="mt-6 p-5 bg-white/20 backdrop-blur-xl rounded-lg border border-white/30">
+              <div className="mt-6 p-5 bg-white/30 backdrop-blur-xl rounded-lg border border-white/30">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 bg-white/20 rounded-full backdrop-blur-md">
+                    <div className="p-3 bg-white/30 rounded-full backdrop-blur-md">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
@@ -293,11 +225,11 @@ export default function Home() {
                   </div>
                   <button
                     onClick={handleConversion}
-                    disabled={isProcessing || !pdfjs}
+                    disabled={isProcessing}
                     className={`px-6 py-3 rounded-full font-medium ${
-                      isProcessing || !pdfjs
+                      isProcessing
                         ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
-                        : 'bg-white/20 backdrop-blur-md text-white hover:bg-white/30 transition-all border border-white/30'
+                        : 'bg-white/30 backdrop-blur-md text-white hover:bg-white/40 transition-all border border-white/40'
                     }`}
                   >
                     {isProcessing ? 'Processing...' : 'Convert'}
@@ -314,8 +246,8 @@ export default function Home() {
                   </span>
                   <span className="text-sm font-medium text-white">{progress}%</span>
                 </div>
-                <div className="w-full bg-white/20 rounded-full h-2.5">
-                  <div className="bg-[#0084c7] h-2.5 rounded-full" style={{ width: `${progress}%` }}></div>
+                <div className="w-full bg-white/10 rounded-full h-2.5">
+                  <div className="bg-[#24C6DC] h-2.5 rounded-full" style={{ width: `${progress}%` }}></div>
                 </div>
               </div>
             )}
@@ -329,9 +261,9 @@ export default function Home() {
           </div>
 
           {stitchedImage && (
-            <div className="backdrop-blur-xl bg-white/20 rounded-xl shadow-xl p-8 mb-8 border border-white/30">
+            <div className="backdrop-blur-xl bg-white/20 rounded-xl shadow-md p-8 mb-8 border border-white/30">
               <div className="flex items-center mb-6">
-                <div className="p-3 bg-white/20 backdrop-blur-md rounded-full mr-4">
+                <div className="p-3 bg-[#24C6DC]/20 backdrop-blur-md rounded-full mr-4">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 13l4 4L19 7" />
                   </svg>
@@ -339,11 +271,11 @@ export default function Home() {
                 <h2 className="text-2xl font-semibold text-white">Complete</h2>
               </div>
               
-              <div className="bg-white/20 backdrop-blur-xl p-4 rounded-lg mb-6 flex flex-wrap items-center gap-4">
+              <div className="bg-white/30 backdrop-blur-xl p-4 rounded-lg mb-6 flex flex-wrap items-center gap-4">
                 <a
                   href={stitchedImage}
                   download="stitched-image.png"
-                  className="inline-flex items-center px-6 py-3 bg-white/20 backdrop-blur-md text-white rounded-full hover:bg-white/30 transition-all border border-white/30"
+                  className="inline-flex items-center px-6 py-3 bg-white/30 backdrop-blur-md text-white rounded-full hover:bg-white/40 transition-all border border-white/40"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
