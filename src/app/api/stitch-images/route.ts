@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { join } from 'path';
 import { writeFile, mkdir, readFile } from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import sharp from 'sharp';
 import { randomUUID } from 'crypto';
+
+// 常量定义
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB 的字节数
+const MIN_QUALITY = 50; // 最低压缩质量
 
 // 日志函数
 const logger = {
@@ -105,9 +109,12 @@ export async function POST(request: NextRequest) {
       currentY += img.height || 0;
     }
 
-    // Create a new image with the composited images
-    logger.info('Starting image composition');
-    try {
+    // 渐进式图像压缩功能
+    async function createStitchedImage(quality = 100) {
+      logger.info(`Attempting image stitching with quality: ${quality}`);
+      
+      const outputTempPath = `${outputPath}.temp.png`;
+      
       await sharp({
         create: {
           width: maxWidth,
@@ -117,15 +124,94 @@ export async function POST(request: NextRequest) {
         }
       })
       .composite(compositeImages)
-      .png()
-      .toFile(outputPath);
+      .png({ quality })
+      .toFile(outputTempPath);
       
-      logger.info(`Stitched image saved successfully to: ${outputPath}`);
+      // 检查文件大小
+      const fileSize = statSync(outputTempPath).size;
+      logger.info(`Generated image size with quality ${quality}: ${fileSize} bytes (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+      
+      if (fileSize <= MAX_FILE_SIZE_BYTES) {
+        // 文件大小符合要求，重命名为最终文件
+        await writeFile(outputPath, await readFile(outputTempPath));
+        // 删除临时文件
+        await new Promise<void>((resolve, reject) => {
+          const fs = require('fs');
+          fs.unlink(outputTempPath, (err: any) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+        return { success: true, quality, fileSize };
+      }
+      
+      return { success: false, quality, fileSize };
+    }
+
+    // 二分查找法寻找最佳质量设置
+    async function findOptimalQuality() {
+      let low = MIN_QUALITY; // 最低质量
+      let high = 100; // 最高质量
+      let bestQuality = low;
+      let bestFileSize = 0;
+      
+      // 首先尝试使用最高质量
+      const highQualityResult = await createStitchedImage(high);
+      if (highQualityResult.success) {
+        logger.info(`High quality (${high}) image is within size limit: ${(highQualityResult.fileSize / 1024 / 1024).toFixed(2)}MB`);
+        return { quality: high, fileSize: highQualityResult.fileSize };
+      }
+      
+      // 如果高质量不满足要求，使用二分法寻找最佳质量
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        
+        if (mid === bestQuality) break; // 防止无限循环
+        
+        const result = await createStitchedImage(mid);
+        
+        if (result.success) {
+          bestQuality = mid;
+          bestFileSize = result.fileSize;
+          // 尝试寻找更高的质量
+          low = mid + 1;
+        } else {
+          // 尝试更低的质量
+          high = mid - 1;
+        }
+      }
+      
+      // 如果找到了满足条件的质量
+      if (bestQuality >= MIN_QUALITY) {
+        // 确保使用找到的最佳质量生成最终图像
+        if (bestQuality !== high) { // 如果最佳质量不是上次尝试的质量
+          await createStitchedImage(bestQuality);
+        }
+        
+        logger.info(`Found optimal quality: ${bestQuality} with file size: ${(bestFileSize / 1024 / 1024).toFixed(2)}MB`);
+        return { quality: bestQuality, fileSize: bestFileSize };
+      }
+      
+      // 如果都不满足条件，使用最低质量
+      logger.info(`Using minimum quality (${MIN_QUALITY}) as no optimal quality found`);
+      const minResult = await createStitchedImage(MIN_QUALITY);
+      return { quality: MIN_QUALITY, fileSize: minResult.fileSize };
+    }
+
+    // 创建图像并进行大小检查
+    logger.info('Starting image composition with automatic size optimization');
+    try {
+      const optimizationResult = await findOptimalQuality();
+      
+      logger.info(`Stitched image saved successfully to: ${outputPath} with quality: ${optimizationResult.quality}, size: ${(optimizationResult.fileSize / 1024 / 1024).toFixed(2)}MB`);
 
       return NextResponse.json({ 
         stitchedImage: publicPath,
         width: maxWidth,
-        height: totalHeight
+        height: totalHeight,
+        quality: optimizationResult.quality,
+        sizeBytes: optimizationResult.fileSize,
+        sizeMB: (optimizationResult.fileSize / 1024 / 1024).toFixed(2)
       });
     } catch (stitchError) {
       logger.error('Error during image composition', stitchError);

@@ -17,6 +17,8 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [pdfjs, setPdfjs] = useState<any | null>(null);
+  const [imageQuality, setImageQuality] = useState<number | null>(null);
+  const [imageSize, setImageSize] = useState<string | null>(null);
 
   useEffect(() => {
     const loadPdfJs = async () => {
@@ -193,6 +195,8 @@ export default function Home() {
 
       const stitchResult = await stitchResponse.json();
       setStitchedImage(stitchResult.stitchedImage);
+      setImageQuality(stitchResult.quality || 100);
+      setImageSize(stitchResult.sizeMB || null);
       setProgress(100);
     } catch (err) {
       console.error('Error during conversion process:', err);
@@ -315,24 +319,44 @@ export default function Home() {
         {stitchedImage && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Result</h2>
-            <div className="mb-4">
-              <a
-                href={stitchedImage}
-                download="stitched-image.png"
-                className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Download Stitched Image
-              </a>
+            <div className="mb-4 flex flex-col space-y-2">
+              <div className="flex items-center space-x-4">
+                <a
+                  href={stitchedImage}
+                  download="stitched-image.png"
+                  className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download Stitched Image
+                </a>
+                
+                {imageSize && (
+                  <span className="text-sm text-gray-600 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    {imageSize} MB
+                  </span>
+                )}
+                
+                {imageQuality !== null && imageQuality < 100 && (
+                  <span className="text-sm text-amber-600 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Image was compressed to {imageQuality}% quality to stay under 10MB
+                  </span>
+                )}
+              </div>
             </div>
             <div className="rounded-lg border border-gray-200 overflow-hidden">
-              <Image
-                src={stitchedImage}
-                alt="Stitched Image"
-                width={800}
-                height={1200}
+              <Image 
+                src={stitchedImage} 
+                alt="Stitched Image" 
+                width={800} 
+                height={1200} 
                 className="w-full h-auto"
                 style={{ maxHeight: '600px', objectFit: 'contain' }}
               />
