@@ -27,10 +27,10 @@ export async function POST(request: NextRequest) {
     const pdfFile = formData.get('pdf') as File;
     
     if (!pdfFile) {
-      logger.error('No PDF file provided', {});
+      logger.error('No PDF file provided', new Error("Missing PDF file"));
       return NextResponse.json({ 
-        error: 'No PDF file provided', 
-        details: 'Please upload a valid PDF file'
+        success: false, 
+        error: 'No PDF file provided' 
       }, { status: 400 });
     }
     
@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     logger.error('PDF conversion error', error);
     return NextResponse.json({ 
+      success: false, 
       error: 'Failed to process PDF file', 
       details: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined

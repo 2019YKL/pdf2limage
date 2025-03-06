@@ -26,11 +26,7 @@ export async function POST(request: NextRequest) {
     const pageIndex = formData.get('pageIndex') as string;
     
     if (!image || !sessionId || pageIndex === undefined) {
-      logger.error('Missing required parameters', { 
-        hasImage: !!image, 
-        hasSessionId: !!sessionId, 
-        pageIndex 
-      });
+      logger.error('Missing required parameters', new Error("Missing required parameters"));
       return NextResponse.json({ 
         error: 'Missing required parameters', 
         details: 'Image, sessionId, and pageIndex are required' 

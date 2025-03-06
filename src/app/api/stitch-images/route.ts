@@ -34,8 +34,11 @@ export async function POST(request: NextRequest) {
     const quality = parseInt(formData.get('quality') as string) || 90;
     
     if (!imageFiles || imageFiles.length === 0) {
-      logger.error('No image files provided', {});
-      return NextResponse.json({ error: 'No images provided' }, { status: 400 });
+      logger.error('No image files provided', new Error("Missing files"));
+      return NextResponse.json({ 
+        success: false, 
+        error: 'No image files provided' 
+      }, { status: 400 });
     }
 
     logger.info(`Processing ${imageFiles.length} images for stitching`);
@@ -103,7 +106,7 @@ export async function POST(request: NextRequest) {
         logger.info(`Reading image ${index + 1}/${savedImagePaths.length}: ${imagePath}`);
         
         if (!existsSync(imagePath)) {
-          logger.error(`Image file does not exist: ${imagePath}`);
+          logger.error(`Image file does not exist: ${imagePath}`, new Error("File not found"));
           throw new Error(`Image file not found: ${imagePath}`);
         }
         
