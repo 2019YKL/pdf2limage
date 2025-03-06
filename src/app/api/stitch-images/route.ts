@@ -8,8 +8,9 @@ import fs from 'fs';
 import os from 'os';
 
 // 常量定义
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB 的字节数
-const MIN_QUALITY = 50; // 最低压缩质量
+const DEFAULT_QUALITY = 80; // 默认质量设置降低到80
+const MIN_QUALITY = 60; // 最低质量设置
+const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024; // 4MB限制，确保在Vercel的负载限制内
 
 // 日志函数
 const logger = {
@@ -107,9 +108,27 @@ export async function POST(request: NextRequest) {
   try {
     // 处理 multipart/form-data 请求
     const formData = await request.formData();
+    
+    // 获取会话ID（必需）
+    const sessionId = formData.get('sessionId') as string;
+    if (!sessionId) {
+      logger.error('No session ID provided');
+      return NextResponse.json({ error: 'No session ID provided' }, { status: 400 });
+    }
+    
+    // 获取质量设置（可选，默认80）
+    const quality = parseInt(formData.get('quality') as string || DEFAULT_QUALITY.toString(), 10);
+    
+    // 获取指定的页面范围（可选）
+    const pageRange = formData.get('pageRange') as string;
+    
+    // 获取是否添加水印
+    const addWatermark = formData.get('addWatermark') === 'true';
+    
+    logger.info(`Stitching images for session: ${sessionId}, quality: ${quality}, pageRange: ${pageRange || 'all'}, watermark: ${addWatermark}`);
+    
+    // 处理 multipart/form-data 请求
     const imageFiles = formData.getAll('images') as File[];
-    const quality = formData.get('quality') ? parseInt(formData.get('quality') as string) : 90;
-    const tempDirName = formData.get('tempDirName') as string || '';
     
     if (!imageFiles || imageFiles.length === 0) {
       logger.error('No images provided', new Error("Missing images"));
@@ -120,7 +139,6 @@ export async function POST(request: NextRequest) {
 
     // 获取系统临时目录
     const tempDir = getTempDirectory();
-    const sessionId = tempDirName || randomUUID();
     const sessionTempDir = join(tempDir, sessionId);
 
     // 创建临时目录保存上传的图片
@@ -143,19 +161,15 @@ export async function POST(request: NextRequest) {
     }
     
     // 创建输出目录
-    const outputDir = getOutputDirectory();
-    if (!existsSync(outputDir)) {
-      logger.info(`Creating output directory: ${outputDir}`);
-      await mkdir(outputDir, { recursive: true });
+    const outputDirPath = getOutputDirectory();
+    if (!existsSync(outputDirPath)) {
+      await mkdir(outputDirPath, { recursive: true });
     }
-
-    // Generate a unique ID for this stitched image
-    const outputFileName = `stitched-${randomUUID()}.png`;
-    const outputPath = join(outputDir, outputFileName);
-    const publicPath = getPublicPath(outputFileName, sessionId);
     
-    logger.info(`Output will be saved to: ${outputPath}`);
-
+    // 输出文件路径
+    const outputFilename = `stitched-${sessionId}.png`;
+    const outputPath = join(outputDirPath, outputFilename);
+    
     // Load all images with sharp and get their dimensions
     const imageDetails = await Promise.all(
       savedImagePaths.map(async (imagePath, index) => {
@@ -222,8 +236,8 @@ export async function POST(request: NextRequest) {
       currentY += img.height;
     }
 
-    // 渐进式图像压缩功能
-    async function createStitchedImage(quality = 90) {
+    // 压缩设置：使用更激进的压缩以减小文件大小
+    async function createStitchedImage(quality = 80) {
       logger.info(`Attempting image stitching with quality: ${quality}`);
       
       try {
@@ -249,6 +263,15 @@ export async function POST(request: NextRequest) {
           }))
         });
         
+        // 对于Vercel环境，我们使用更激进的压缩设置
+        const compressionOptions = process.env.VERCEL 
+          ? { 
+              quality,
+              compressionLevel: 9, // 最高压缩级别
+              palette: true       // 使用调色板减少颜色数量
+            }
+          : { quality };
+        
         await sharp({
           create: {
             width: maxWidth,
@@ -259,7 +282,7 @@ export async function POST(request: NextRequest) {
         })
         .composite(compositeImages)
         .flatten({ background: { r: 255, g: 255, b: 255 } }) // 确保背景是纯白色
-        .png({ quality })
+        .png(compressionOptions)
         .toFile(outputTempPath);
         
         logger.info(`Stitched image created successfully at: ${outputTempPath}`);
@@ -370,7 +393,7 @@ export async function POST(request: NextRequest) {
 
     // 返回stitched图像的URL和元数据
     return NextResponse.json({ 
-      imageUrl: publicPath,
+      imageUrl: getPublicPath(outputFilename, sessionId),
       quality: compressionResult.quality,
       fileSize: sizeMB
     });

@@ -169,9 +169,10 @@ export default function Home() {
         console.error('Error fetching lastpic.png:', error);
       }
       
-      // Set quality and pass the session ID from the PDF conversion
-      formData.append('quality', '90');
-      formData.append('tempDirName', sessionId);
+      // 设置质量和会话ID
+      formData.append('quality', '80'); // 降低默认质量为80
+      formData.append('sessionId', sessionId); // 修改参数名称
+      formData.append('addWatermark', 'true'); // 添加水印参数
       
       // Send to API for stitching
       setProgress(95); // Almost done
