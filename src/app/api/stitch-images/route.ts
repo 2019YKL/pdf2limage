@@ -149,7 +149,14 @@ export async function POST(request: NextRequest) {
     logger.info(`Total stitched image height will be: ${totalHeight}px`);
 
     // Create an array of image objects with positioning
-    const compositeImages = [];
+    // 定义组合图像接口
+    interface CompositeImage {
+      input: string;
+      top: number;
+      left: number;
+    }
+    
+    const compositeImages: CompositeImage[] = [];
     let currentY = 0;
 
     for (const [index, img] of imageMetadata.entries()) {
