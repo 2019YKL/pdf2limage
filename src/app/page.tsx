@@ -237,12 +237,12 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gradient-to-br from-sky-500 via-blue-400 to-teal-300">
+    <div className="flex flex-col min-h-screen bg-[#0BA4F9]">
       {/* 背景图案 */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-24 -right-24 w-96 h-96 bg-white opacity-10 rounded-full blur-2xl"></div>
         <div className="absolute bottom-36 -left-20 w-72 h-72 bg-white opacity-10 rounded-full blur-xl"></div>
-        <div className="absolute top-1/3 left-1/3 w-48 h-48 bg-blue-200 opacity-20 rounded-full blur-md"></div>
+        <div className="absolute top-1/3 left-1/3 w-48 h-48 bg-white opacity-20 rounded-full blur-md"></div>
       </div>
 
       <main className="container mx-auto px-4 py-12 flex-grow relative z-10">
@@ -271,7 +271,7 @@ export default function Home() {
                 <p className="text-lg font-medium text-white">
                   {isDragActive ? "Drop your PDF here" : "Drag & drop your PDF"}
                 </p>
-                <button className="mt-2 px-6 py-2 bg-gradient-to-r from-blue-500 to-teal-400 text-white rounded-md hover:opacity-90 transition-all shadow-lg font-medium">
+                <button className="mt-2 px-6 py-2 bg-[#0084c7] text-white rounded-md hover:opacity-90 transition-all shadow-lg font-medium">
                   Choose File
                 </button>
               </div>
@@ -297,7 +297,7 @@ export default function Home() {
                     className={`px-6 py-3 rounded-md font-medium ${
                       isProcessing || !pdfjs
                         ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-blue-500 to-teal-400 text-white hover:opacity-90 shadow-lg'
+                        : 'bg-[#0084c7] text-white hover:opacity-90 shadow-lg'
                     }`}
                   >
                     {isProcessing ? 'Processing...' : 'Convert'}
@@ -315,7 +315,7 @@ export default function Home() {
                   <span className="text-sm font-medium text-white">{progress}%</span>
                 </div>
                 <div className="w-full bg-white/20 rounded-full h-2.5">
-                  <div className="bg-gradient-to-r from-blue-500 to-teal-400 h-2.5 rounded-full" style={{ width: `${progress}%` }}></div>
+                  <div className="bg-[#0084c7] h-2.5 rounded-full" style={{ width: `${progress}%` }}></div>
                 </div>
               </div>
             )}
@@ -331,7 +331,7 @@ export default function Home() {
           {stitchedImage && (
             <div className="backdrop-blur-xl bg-white/20 rounded-xl shadow-xl p-8 mb-8 border border-white/30">
               <div className="flex items-center mb-6">
-                <div className="p-3 bg-teal-100/20 backdrop-blur-md rounded-full mr-4">
+                <div className="p-3 bg-white/20 backdrop-blur-md rounded-full mr-4">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 13l4 4L19 7" />
                   </svg>
@@ -343,7 +343,7 @@ export default function Home() {
                 <a
                   href={stitchedImage}
                   download="stitched-image.png"
-                  className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-teal-400 text-white rounded-md hover:opacity-90 transition-all shadow-lg font-medium"
+                  className="inline-flex items-center px-6 py-3 bg-[#0084c7] text-white rounded-md hover:opacity-90 transition-all shadow-lg font-medium"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
