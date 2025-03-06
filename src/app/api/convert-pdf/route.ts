@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { PDFDocument } from 'pdf-lib';
 import { v4 as uuidv4 } from 'uuid';
+import os from 'os';
 
 // 日志函数
 const logger = {
@@ -37,6 +38,18 @@ async function cleanupTempFiles(filePaths: string[]) {
   }
 }
 
+// 获取系统临时目录的函数
+function getTempDirectory() {
+  // 在Vercel环境中使用/tmp目录，这是唯一可写的目录
+  if (process.env.VERCEL) {
+    return '/tmp';
+  }
+
+  // 在开发环境中使用public/temp
+  const localTempDir = join(process.cwd(), 'public', 'temp');
+  return localTempDir;
+}
+
 export async function POST(request: NextRequest) {
   const sessionId = uuidv4();
   logger.info(`Starting PDF conversion process for session: ${sessionId}`);
@@ -57,8 +70,13 @@ export async function POST(request: NextRequest) {
     
     logger.info(`Processing PDF file: ${pdfFile.name}, size: ${pdfFile.size} bytes`);
     
-    // 创建临时目录存储 PDF 和图像
-    const tempDir = join(process.cwd(), 'public', 'temp', sessionId);
+    // 使用系统临时目录
+    const baseDir = getTempDirectory();
+    const tempDir = join(baseDir, sessionId);
+    
+    logger.info(`Using temp directory: ${tempDir}`);
+    
+    // 确保临时目录存在
     if (!existsSync(tempDir)) {
       logger.info(`Creating temp directory: ${tempDir}`);
       await mkdir(tempDir, { recursive: true });
@@ -85,7 +103,8 @@ export async function POST(request: NextRequest) {
       success: true,
       sessionId,
       pageCount,
-      pdfPath: `/temp/${sessionId}/original.pdf`
+      pdfPath: `/temp/${sessionId}/original.pdf`,
+      tempDir // Include the actual temp directory path for other APIs
     });
     
   } catch (error) {

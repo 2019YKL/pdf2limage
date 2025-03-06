@@ -69,6 +69,7 @@ export default function Home() {
       const pdfFormData = new FormData();
       pdfFormData.append('pdf', file);
       
+      console.log('Uploading PDF to server...');
       const pdfResponse = await fetch('/api/convert-pdf', {
         method: 'POST',
         body: pdfFormData
@@ -79,6 +80,12 @@ export default function Home() {
         try {
           const errorData = await pdfResponse.json();
           errorMsg = errorData.error || errorMsg;
+          if (errorData.details) {
+            console.error('Error details:', errorData.details);
+          }
+          if (errorData.stack) {
+            console.error('Error stack:', errorData.stack);
+          }
         } catch (e) {
           console.error('Error parsing error response:', e);
         }
@@ -88,12 +95,13 @@ export default function Home() {
       let pdfResult;
       try {
         pdfResult = await pdfResponse.json();
+        console.log('PDF upload result:', pdfResult);
       } catch (e) {
         console.error('Error parsing PDF API response:', e);
         throw new Error('Invalid response from server when uploading PDF');
       }
       
-      const { sessionId, pageCount: totalPages } = pdfResult;
+      const { sessionId, tempDir, pageCount: totalPages } = pdfResult;
       setPageCount(totalPages);
       
       // Load the PDF file on client side for rendering
@@ -161,12 +169,13 @@ export default function Home() {
         console.error('Error fetching lastpic.png:', error);
       }
       
-      // Set quality and add temp directory name
+      // Set quality and pass the session ID from the PDF conversion
       formData.append('quality', '90');
-      formData.append('tempDirName', `pdf-${Date.now()}`);
+      formData.append('tempDirName', sessionId);
       
       // Send to API for stitching
       setProgress(95); // Almost done
+      console.log('Sending images to stitch API...');
       
       let stitchResponse;
       try {
@@ -206,6 +215,7 @@ export default function Home() {
         throw new Error('Invalid response from server when stitching images');
       }
       
+      console.log('Stitch complete, result:', result);
       setStitchedImage(result.imageUrl);
       setProgress(100);
       setImageQuality(result.quality);

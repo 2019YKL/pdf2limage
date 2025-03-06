@@ -5,6 +5,7 @@ import { existsSync, statSync } from 'fs';
 import sharp from 'sharp';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
+import os from 'os';
 
 // 常量定义
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB 的字节数
@@ -22,6 +23,37 @@ const logger = {
     }
   }
 };
+
+// 获取系统临时目录的函数
+function getTempDirectory() {
+  // 在Vercel环境中使用/tmp目录，这是唯一可写的目录
+  if (process.env.VERCEL) {
+    return '/tmp';
+  }
+
+  // 在开发环境中使用public/temp
+  const localTempDir = join(process.cwd(), 'public', 'temp');
+  return localTempDir;
+}
+
+// 获取输出目录函数
+function getOutputDirectory() {
+  if (process.env.VERCEL) {
+    return join('/tmp', 'output');
+  }
+  return join(process.cwd(), 'public', 'output');
+}
+
+// 构建公共URL路径
+function getPublicPath(filename: string, sessionId: string) {
+  if (process.env.VERCEL) {
+    // 在Vercel环境中，我们需要基于临时目录提供文件访问
+    return `/api/serve-image?path=${sessionId}/${filename}`;
+  } else {
+    // 在开发环境中，使用public目录的URL路径
+    return `/temp/${sessionId}/${filename}`;
+  }
+}
 
 // 改进清理临时文件的函数
 async function cleanupTempFiles(filePaths: string[]) {
@@ -64,11 +96,15 @@ export async function POST(request: NextRequest) {
 
     logger.info(`Processing ${imageFiles.length} images for stitching`);
 
+    // 获取系统临时目录
+    const tempDir = getTempDirectory();
+    const sessionId = tempDirName || randomUUID();
+    const sessionTempDir = join(tempDir, sessionId);
+
     // 创建临时目录保存上传的图片
-    const tempDir = join(process.cwd(), 'public', 'temp', tempDirName || randomUUID());
-    if (!existsSync(tempDir)) {
-      logger.info(`Creating temp directory: ${tempDir}`);
-      await mkdir(tempDir, { recursive: true });
+    if (!existsSync(sessionTempDir)) {
+      logger.info(`Creating temp directory: ${sessionTempDir}`);
+      await mkdir(sessionTempDir, { recursive: true });
     }
 
     // 保存上传的图片到临时目录
@@ -76,7 +112,7 @@ export async function POST(request: NextRequest) {
     const tempFilesToCleanup: string[] = [];
     for (let i = 0; i < imageFiles.length; i++) {
       const file = imageFiles[i];
-      const imagePath = join(tempDir, file.name);
+      const imagePath = join(sessionTempDir, file.name);
       
       await writeFile(imagePath, Buffer.from(await file.arrayBuffer()));
       savedImagePaths.push(imagePath);
@@ -84,8 +120,8 @@ export async function POST(request: NextRequest) {
       logger.info(`Saved image ${i + 1}/${imageFiles.length} to ${imagePath}`);
     }
     
-    // Create output directory if it doesn't exist
-    const outputDir = join(process.cwd(), 'public', 'output');
+    // 创建输出目录
+    const outputDir = getOutputDirectory();
     if (!existsSync(outputDir)) {
       logger.info(`Creating output directory: ${outputDir}`);
       await mkdir(outputDir, { recursive: true });
@@ -115,7 +151,7 @@ export async function POST(request: NextRequest) {
     // Generate a unique ID for this stitched image
     const outputFileName = `stitched-${randomUUID()}.png`;
     const outputPath = join(outputDir, outputFileName);
-    const publicPath = `/output/${outputFileName}`;
+    const publicPath = getPublicPath(outputFileName, sessionId);
     
     logger.info(`Output will be saved to: ${outputPath}`);
 
@@ -294,7 +330,7 @@ export async function POST(request: NextRequest) {
       // 尝试删除临时目录
       await new Promise<void>((resolve) => {
         import('fs').then(fs => {
-          fs.rmdir(tempDir, (err: Error | null) => {
+          fs.rmdir(sessionTempDir, (err: Error | null) => {
             if (err) {
               logger.info(`Note: Could not delete temp directory: ${err.message}`);
             }
