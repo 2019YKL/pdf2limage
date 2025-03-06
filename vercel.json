@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "public": true,
+  "cleanUrls": true,
+  "outputDirectory": ".next",
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    }
+  ]
+}

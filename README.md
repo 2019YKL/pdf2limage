@@ -2,6 +2,10 @@
 
 这是一个基于 Next.js 开发的 PDF 转 PNG 拼长图应用，使用 Tailwind CSS 进行界面设计，可以部署到 Vercel 平台上。
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2F%7Busername%7D%2Fpdf2limage&project-name=pdf2limage&repository-name=pdf2limage)
+
+一个简单高效的工具，用于将PDF文件转换为单个长图像。
+
 ## 功能特点
 
 - 将 PDF 文件转换为多张 PNG 图片
@@ -21,7 +25,7 @@
 
 ## 开始使用
 
-首先，安装依赖:
+首先，安装依赖：
 
 ```bash
 npm install
@@ -31,7 +35,7 @@ yarn install
 pnpm install
 ```
 
-然后，运行开发服务器:
+然后，运行开发服务器：
 
 ```bash
 npm run dev
@@ -52,7 +56,7 @@ pnpm dev
 
 ## 部署到 Vercel
 
-此应用程序已针对 Vercel 平台进行了优化，可以很容易地部署:
+此应用程序已针对 Vercel 平台进行了优化，可以很容易地部署：
 
 1. 创建 [Vercel 账户](https://vercel.com/signup)
 2. 在项目目录运行 `vercel` 或通过 Vercel 仪表盘导入 GitHub 仓库
@@ -71,3 +75,5 @@ pnpm dev
 - 大型 PDF 文件处理可能需要较长时间
 - 确保服务器有足够的内存处理大文件
 - 部署到 Vercel 时，建议设置 `maximumDuration` 参数增加处理超时限制
+
+## 由qizhi发明

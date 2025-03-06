@@ -178,7 +178,16 @@ export default function Home() {
         <div className="max-w-3xl mx-auto">
           {/* 标题 */}
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">PDF to Long Image</h1>
+            <div className="flex items-center justify-center mb-3">
+              <svg className="w-10 h-10 text-blue-500 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+              <h1 className="text-4xl font-bold text-gray-800">PDF to Long Image</h1>
+            </div>
             <p className="text-gray-600">Convert your PDF documents into a single long image</p>
           </div>
           
@@ -321,8 +330,26 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="py-4 text-center text-gray-500">
-        <p className="text-sm"> {new Date().getFullYear()} PDF to Long Image Converter</p>
+      <footer className="py-6 text-center text-gray-500 bg-white border-t border-gray-200">
+        <div className="container mx-auto">
+          <p className="text-sm mb-2"> {new Date().getFullYear()} PDF to Long Image Converter</p>
+          <p className="text-xs text-gray-400 flex items-center justify-center">
+            <span>Built with</span>
+            <svg className="w-4 h-4 mx-1 text-blue-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+              <path d="M2 17l10 5 10-5"></path>
+              <path d="M2 12l10 5 10-5"></path>
+            </svg>
+            <span>Next.js</span>
+            <span className="mx-1">•</span>
+            <svg className="w-4 h-4 mx-1 text-purple-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+            </svg>
+            <span>Sharp</span>
+            <span className="mx-1">•</span> 
+            <span>由qizhi发明</span>
+          </p>
+        </div>
       </footer>
     </div>
   );
