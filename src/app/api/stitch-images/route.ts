@@ -26,32 +26,54 @@ const logger = {
 
 // 获取系统临时目录的函数
 function getTempDirectory() {
-  // 在Vercel环境中使用/tmp目录，这是唯一可写的目录
-  if (process.env.VERCEL) {
-    return '/tmp';
+  // 始终使用系统临时目录，避免使用程序根目录下的public文件夹
+  const tempDir = process.env.VERCEL ? '/tmp' : join(os.tmpdir(), 'pdf2limage');
+  
+  // 确保目录存在
+  try {
+    if (!existsSync(tempDir)) {
+      // 使用同步方法创建目录，确保目录在后续操作前存在
+      const fs = require('fs');
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+  } catch (error) {
+    console.error(`[ERROR] Failed to create temp directory: ${tempDir}`, error);
   }
-
-  // 在开发环境中使用public/temp
-  const localTempDir = join(process.cwd(), 'public', 'temp');
-  return localTempDir;
+  
+  return tempDir;
 }
 
 // 获取输出目录函数
 function getOutputDirectory() {
-  if (process.env.VERCEL) {
-    return join('/tmp', 'output');
+  // 同样使用系统临时目录下的output子目录
+  const baseDir = getTempDirectory();
+  const outputDir = join(baseDir, 'output');
+  
+  // 确保目录存在
+  try {
+    if (!existsSync(outputDir)) {
+      const fs = require('fs');
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+  } catch (error) {
+    console.error(`[ERROR] Failed to create output directory: ${outputDir}`, error);
   }
-  return join(process.cwd(), 'public', 'output');
+  
+  return outputDir;
 }
 
 // 构建公共URL路径
 function getPublicPath(filename: string, sessionId: string) {
+  // 在Vercel环境中，使用API端点来提供文件访问
   if (process.env.VERCEL) {
-    // 在Vercel环境中，我们需要基于临时目录提供文件访问
-    return `/api/serve-image?path=${sessionId}/${filename}`;
+    const path = `${sessionId}/${filename}`;
+    logger.info(`Using API route for file serving: /api/serve-image?path=${path}`);
+    return `/api/serve-image?path=${path}`;
   } else {
-    // 在开发环境中，使用public目录的URL路径
-    return `/temp/${sessionId}/${filename}`;
+    // 在开发环境中，直接构建相对URL
+    const localPath = `/temp/${sessionId}/${filename}`;
+    logger.info(`Using local file path: ${localPath}`);
+    return localPath;
   }
 }
 
@@ -78,20 +100,20 @@ async function cleanupTempFiles(filePaths: string[]) {
 
 export async function POST(request: NextRequest) {
   logger.info('Received image stitching request');
+  logger.info(`Running in environment: ${process.env.VERCEL ? 'Vercel' : 'Development'}`);
+  logger.info(`Temp directory will be: ${getTempDirectory()}`);
+  logger.info(`Output directory will be: ${getOutputDirectory()}`);
   
   try {
     // 处理 multipart/form-data 请求
     const formData = await request.formData();
     const imageFiles = formData.getAll('images') as File[];
-    const tempDirName = formData.get('tempDirName') as string;
-    const quality = parseInt(formData.get('quality') as string) || 90;
+    const quality = formData.get('quality') ? parseInt(formData.get('quality') as string) : 90;
+    const tempDirName = formData.get('tempDirName') as string || '';
     
     if (!imageFiles || imageFiles.length === 0) {
-      logger.error('No image files provided', new Error("Missing files"));
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No image files provided' 
-      }, { status: 400 });
+      logger.error('No images provided', new Error("Missing images"));
+      return NextResponse.json({ error: 'No images provided' }, { status: 400 });
     }
 
     logger.info(`Processing ${imageFiles.length} images for stitching`);
@@ -127,27 +149,6 @@ export async function POST(request: NextRequest) {
       await mkdir(outputDir, { recursive: true });
     }
 
-    // 清理旧的输出文件 (保留最近2小时内的文件)
-    try {
-      if (existsSync(outputDir)) {
-        const files = fs.readdirSync(outputDir);
-        const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-        
-        for (const file of files) {
-          const filePath = path.join(outputDir, file);
-          const stats = fs.statSync(filePath);
-          
-          if (stats.isFile() && stats.mtimeMs < twoHoursAgo) {
-            logger.info(`Cleaning up old output file: ${filePath}`);
-            fs.unlinkSync(filePath);
-          }
-        }
-      }
-    } catch (cleanupError) {
-      logger.error('Error during old files cleanup', cleanupError);
-      // 继续执行，不因清理错误而中断
-    }
-
     // Generate a unique ID for this stitched image
     const outputFileName = `stitched-${randomUUID()}.png`;
     const outputPath = join(outputDir, outputFileName);
@@ -155,38 +156,28 @@ export async function POST(request: NextRequest) {
     
     logger.info(`Output will be saved to: ${outputPath}`);
 
-    // Load all the images
-    logger.info('Loading image metadata');
-    const imageMetadataPromises = savedImagePaths.map(async (imagePath, index) => {
-      try {
-        logger.info(`Reading image ${index + 1}/${savedImagePaths.length}: ${imagePath}`);
-        
-        if (!existsSync(imagePath)) {
-          logger.error(`Image file does not exist: ${imagePath}`, new Error("File not found"));
-          throw new Error(`Image file not found: ${imagePath}`);
+    // Load all images with sharp and get their dimensions
+    const imageDetails = await Promise.all(
+      savedImagePaths.map(async (imagePath, index) => {
+        try {
+          const metadata = await sharp(imagePath).metadata();
+          return {
+            path: imagePath,
+            width: metadata.width || 0,
+            height: metadata.height || 0,
+            name: path.basename(imagePath)
+          };
+        } catch (error) {
+          logger.error(`Error processing image ${index}:`, error);
+          throw new Error(`Failed to process image ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        
-        const metadata = await sharp(imagePath).metadata();
-        logger.info(`Image ${index + 1} metadata:`, { 
-          width: metadata.width, 
-          height: metadata.height,
-          format: metadata.format
-        });
-        
-        return { path: imagePath, width: metadata.width, height: metadata.height };
-      } catch (error) {
-        logger.error(`Error processing image ${index + 1}: ${imagePath}`, error);
-        throw error;
-      }
-    });
-
-    const imageMetadata = await Promise.all(imageMetadataPromises);
-    logger.info('All image metadata loaded successfully');
+      })
+    );
 
     // Sort image paths by filename (to maintain order)
-    imageMetadata.sort((a, b) => {
-      const aName = path.basename(a.path);
-      const bName = path.basename(b.path);
+    imageDetails.sort((a, b) => {
+      const aName = a.name;
+      const bName = b.name;
       
       // Make sure lastpic.png is always the last image
       if (aName === 'lastpic.png') return 1;
@@ -197,11 +188,11 @@ export async function POST(request: NextRequest) {
     });
 
     // Find the maximum width
-    const maxWidth = Math.max(...imageMetadata.map(img => img.width || 0));
+    const maxWidth = Math.max(...imageDetails.map(img => img.width));
     logger.info(`Maximum image width: ${maxWidth}px`);
     
     // Calculate total height needed
-    const totalHeight = imageMetadata.reduce((sum, img) => sum + (img.height || 0), 0);
+    const totalHeight = imageDetails.reduce((sum, img) => sum + img.height, 0);
     logger.info(`Total stitched image height will be: ${totalHeight}px`);
 
     // Create an array of image objects with positioning
@@ -216,10 +207,10 @@ export async function POST(request: NextRequest) {
     let currentY = 0;
 
     // 使用常规for循环代替for...of循环，避免迭代器兼容性问题
-    for (let i = 0; i < imageMetadata.length; i++) {
-      const img = imageMetadata[i];
+    for (let i = 0; i < imageDetails.length; i++) {
+      const img = imageDetails[i];
       // Center images that are smaller than maxWidth
-      const x = Math.floor((maxWidth - (img.width || 0)) / 2);
+      const x = Math.floor((maxWidth - img.width) / 2);
       
       compositeImages.push({
         input: img.path,
@@ -228,41 +219,70 @@ export async function POST(request: NextRequest) {
       });
       
       logger.info(`Positioned image ${i + 1} at x:${x}, y:${currentY}`);
-      currentY += img.height || 0;
+      currentY += img.height;
     }
 
     // 渐进式图像压缩功能
     async function createStitchedImage(quality = 90) {
       logger.info(`Attempting image stitching with quality: ${quality}`);
       
-      const outputTempPath = `${outputPath}.temp.png`;
-      
-      await sharp({
-        create: {
+      try {
+        const outputTempPath = `${outputPath}.temp.png`;
+        logger.info(`Temporary stitched image will be saved to: ${outputTempPath}`);
+        
+        // 确保每个图像都存在
+        for (const img of compositeImages) {
+          if (!existsSync(img.input)) {
+            logger.error(`Image file missing before stitching: ${img.input}`);
+          }
+        }
+        
+        // 记录所有图像的信息
+        logger.info(`Stitching ${compositeImages.length} images with sharp`, { 
           width: maxWidth,
           height: totalHeight,
-          channels: 4,
-          background: { r: 255, g: 255, b: 255, alpha: 1 }
+          images: compositeImages.map(img => ({
+            path: img.input,
+            top: img.top,
+            left: img.left,
+            exists: existsSync(img.input)
+          }))
+        });
+        
+        await sharp({
+          create: {
+            width: maxWidth,
+            height: totalHeight,
+            channels: 4,
+            background: { r: 255, g: 255, b: 255, alpha: 1 }
+          }
+        })
+        .composite(compositeImages)
+        .flatten({ background: { r: 255, g: 255, b: 255 } }) // 确保背景是纯白色
+        .png({ quality })
+        .toFile(outputTempPath);
+        
+        logger.info(`Stitched image created successfully at: ${outputTempPath}`);
+        
+        // 检查文件大小
+        const fileSize = statSync(outputTempPath).size;
+        logger.info(`Generated image size with quality ${quality}: ${fileSize} bytes (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+        
+        if (fileSize <= MAX_FILE_SIZE_BYTES) {
+          // 文件大小符合要求，重命名为最终文件
+          await writeFile(outputPath, await readFile(outputTempPath));
+          logger.info(`Final image saved to: ${outputPath}`);
+          
+          // 删除临时文件
+          await unlink(outputTempPath);
+          return { success: true, quality, fileSize };
         }
-      })
-      .composite(compositeImages)
-      .flatten({ background: { r: 255, g: 255, b: 255 } }) // 确保背景是纯白色
-      .png({ quality })
-      .toFile(outputTempPath);
-      
-      // 检查文件大小
-      const fileSize = statSync(outputTempPath).size;
-      logger.info(`Generated image size with quality ${quality}: ${fileSize} bytes (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
-      
-      if (fileSize <= MAX_FILE_SIZE_BYTES) {
-        // 文件大小符合要求，重命名为最终文件
-        await writeFile(outputPath, await readFile(outputTempPath));
-        // 删除临时文件
-        await unlink(outputTempPath);
-        return { success: true, quality, fileSize };
+        
+        return { success: false, quality, fileSize };
+      } catch (error) {
+        logger.error(`Error during image stitching with quality ${quality}:`, error);
+        throw new Error(`Failed to stitch images: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
-      
-      return { success: false, quality, fileSize };
     }
 
     // 二分查找法寻找最佳质量设置

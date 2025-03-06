@@ -40,19 +40,29 @@ async function cleanupTempFiles(filePaths: string[]) {
 
 // 获取系统临时目录的函数
 function getTempDirectory() {
-  // 在Vercel环境中使用/tmp目录，这是唯一可写的目录
-  if (process.env.VERCEL) {
-    return '/tmp';
+  // 始终使用系统临时目录，避免使用程序根目录下的public文件夹
+  // 这样在Vercel环境中也能正常工作
+  const tempDir = process.env.VERCEL ? '/tmp' : join(os.tmpdir(), 'pdf2limage');
+  
+  // 确保目录存在
+  try {
+    if (!existsSync(tempDir)) {
+      // 使用同步方法创建目录，确保目录在后续操作前存在
+      const fs = require('fs');
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+  } catch (error) {
+    console.error(`[ERROR] Failed to create temp directory: ${tempDir}`, error);
   }
-
-  // 在开发环境中使用public/temp
-  const localTempDir = join(process.cwd(), 'public', 'temp');
-  return localTempDir;
+  
+  return tempDir;
 }
 
 export async function POST(request: NextRequest) {
   const sessionId = uuidv4();
   logger.info(`Starting PDF conversion process for session: ${sessionId}`);
+  logger.info(`Running in environment: ${process.env.VERCEL ? 'Vercel' : 'Development'}`);
+  logger.info(`Using system temp directory: ${getTempDirectory()}`);
   
   const tempFilesToCleanup: string[] = [];
   
@@ -77,9 +87,18 @@ export async function POST(request: NextRequest) {
     logger.info(`Using temp directory: ${tempDir}`);
     
     // 确保临时目录存在
-    if (!existsSync(tempDir)) {
-      logger.info(`Creating temp directory: ${tempDir}`);
-      await mkdir(tempDir, { recursive: true });
+    try {
+      if (!existsSync(tempDir)) {
+        logger.info(`Creating temp directory: ${tempDir}`);
+        await mkdir(tempDir, { recursive: true });
+      }
+    } catch (dirError) {
+      logger.error(`Failed to create temp directory: ${tempDir}`, dirError);
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Failed to create temporary directory',
+        details: dirError instanceof Error ? dirError.message : 'Unknown error' 
+      }, { status: 500 });
     }
     
     // 保存 PDF 文件
@@ -97,6 +116,16 @@ export async function POST(request: NextRequest) {
     // 在Vercel环境中，暂时不清理文件，让其他API能处理它们
     if (process.env.VERCEL) {
       tempFilesToCleanup.length = 0;
+      
+      // 在Vercel返回时，不要使用相对路径，因为public目录不可写
+      // 提供绝对路径给后续API使用
+      return NextResponse.json({
+        success: true,
+        sessionId,
+        pageCount,
+        pdfPath: tempDir, // 完整的临时目录路径
+        tempDir // 确保传递临时目录供其他API使用
+      });
     }
     
     return NextResponse.json({
