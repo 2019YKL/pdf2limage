@@ -2,7 +2,7 @@
 
 这是一个基于 Next.js 开发的 PDF 转 PNG 拼长图应用，使用 Tailwind CSS 进行界面设计，可以部署到 Vercel 平台上。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2F%7Busername%7D%2Fpdf2limage&project-name=pdf2limage&repository-name=pdf2limage)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/import/project?template=https://github.com/vercel/next.js/tree/canary/examples/hello-world)
 
 一个简单高效的工具，用于将PDF文件转换为单个长图像。
 
@@ -54,15 +54,25 @@ pnpm dev
 3. 等待处理完成，可以查看进度条
 4. 处理完成后，可以预览并下载生成的长图
 
-## 部署到 Vercel
+## 部署说明
 
-此应用程序已针对 Vercel 平台进行了优化，可以很容易地部署：
+要部署此应用到Vercel，请按以下步骤操作：
 
-1. 创建 [Vercel 账户](https://vercel.com/signup)
-2. 在项目目录运行 `vercel` 或通过 Vercel 仪表盘导入 GitHub 仓库
-3. 按照提示完成部署
+1. 将项目代码上传到您的GitHub仓库
+2. 登录Vercel账号：[Vercel登录](https://vercel.com/login)
+3. 点击"New Project"
+4. 导入您的GitHub仓库
+5. 无需额外配置，直接点击"Deploy"
 
-或者使用 [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) 一键部署。
+或者使用Vercel CLI进行部署：
+```bash
+# 安装Vercel CLI
+npm i -g vercel
+
+# 在项目目录下部署
+cd pdf2limage
+vercel
+```
 
 ## 文件结构
 
