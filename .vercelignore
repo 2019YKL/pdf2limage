@@ -1,0 +1,5 @@
+# 忽略所有临时文件
+public/temp
+public/temp/**
+**/temp
+**/temp/**

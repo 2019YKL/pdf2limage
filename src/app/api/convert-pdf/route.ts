@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, writeFile, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { PDFDocument } from 'pdf-lib';
@@ -18,9 +18,23 @@ const logger = {
   }
 };
 
+// 删除临时文件的辅助函数
+async function cleanupTempFiles(filePaths: string[]) {
+  for (const filePath of filePaths) {
+    try {
+      await unlink(filePath);
+      logger.info(`Cleaned up temporary file: ${filePath}`);
+    } catch (error) {
+      logger.error(`Failed to clean up temporary file: ${filePath}`, error);
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
   const sessionId = uuidv4();
   logger.info(`Starting PDF conversion process for session: ${sessionId}`);
+  
+  const tempFilesToCleanup: string[] = [];
   
   try {
     const formData = await request.formData();
@@ -48,6 +62,7 @@ export async function POST(request: NextRequest) {
     const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer());
     logger.info(`Saving PDF to: ${pdfPath}`);
     await writeFile(pdfPath, pdfBuffer);
+    tempFilesToCleanup.push(pdfPath);
     
     // 获取 PDF 页数
     const pdfDoc = await PDFDocument.load(pdfBuffer);
@@ -60,6 +75,7 @@ export async function POST(request: NextRequest) {
       pageCount,
       pdfPath: `/temp/${sessionId}/original.pdf`
     });
+    
   } catch (error) {
     logger.error('PDF conversion error', error);
     return NextResponse.json({ 
@@ -68,5 +84,10 @@ export async function POST(request: NextRequest) {
       details: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined
     }, { status: 500 });
+  } finally {
+    // 在最后清理临时文件
+    if (tempFilesToCleanup.length > 0) {
+      await cleanupTempFiles(tempFilesToCleanup);
+    }
   }
 }

@@ -23,6 +23,20 @@ const logger = {
   }
 };
 
+// 改进清理临时文件的函数
+async function cleanupTempFiles(filePaths: string[]) {
+  for (const filePath of filePaths) {
+    try {
+      if (existsSync(filePath)) {
+        await unlink(filePath);
+        logger.info(`Cleaned up temporary file: ${filePath}`);
+      }
+    } catch (error) {
+      logger.error('Error cleaning up temporary file', error);
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
   logger.info('Received image stitching request');
   
@@ -51,18 +65,17 @@ export async function POST(request: NextRequest) {
     }
 
     // 保存上传的图片到临时目录
-    const savedImagePaths = await Promise.all(
-      imageFiles.map(async (file, index) => {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const filename = file.name;
-        const imagePath = join(tempDir, filename);
-        
-        logger.info(`Saving image ${index + 1}/${imageFiles.length}: ${imagePath}`);
-        await writeFile(imagePath, buffer);
-        
-        return imagePath;
-      })
-    );
+    const savedImagePaths: string[] = [];
+    const tempFilesToCleanup: string[] = [];
+    for (let i = 0; i < imageFiles.length; i++) {
+      const file = imageFiles[i];
+      const imagePath = join(tempDir, file.name);
+      
+      await writeFile(imagePath, Buffer.from(await file.arrayBuffer()));
+      savedImagePaths.push(imagePath);
+      tempFilesToCleanup.push(imagePath);
+      logger.info(`Saved image ${i + 1}/${imageFiles.length} to ${imagePath}`);
+    }
     
     // Create output directory if it doesn't exist
     const outputDir = join(process.cwd(), 'public', 'output');
@@ -300,5 +313,10 @@ export async function POST(request: NextRequest) {
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
+  } finally {
+    // 处理完毕后清理所有临时文件
+    if (tempFilesToCleanup.length > 0) {
+      await cleanupTempFiles(tempFilesToCleanup);
+    }
   }
 }
