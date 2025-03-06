@@ -4,6 +4,7 @@ import { writeFile, mkdir, readFile, unlink } from 'fs/promises';
 import { existsSync, statSync } from 'fs';
 import sharp from 'sharp';
 import { randomUUID } from 'crypto';
+import fs from 'fs';
 
 // 常量定义
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB 的字节数
@@ -11,10 +12,10 @@ const MIN_QUALITY = 50; // 最低压缩质量
 
 // 日志函数
 const logger = {
-  info: (message: string, data?: any) => {
+  info: (message: string, data?: unknown) => {
     console.log(`[INFO][STITCH] ${message}`, data ? JSON.stringify(data) : '');
   },
-  error: (message: string, error: any) => {
+  error: (message: string, error: unknown) => {
     console.error(`[ERROR][STITCH] ${message}`, error);
     if (error instanceof Error) {
       console.error('Stack:', error.stack);
@@ -69,8 +70,6 @@ export async function POST(request: NextRequest) {
 
     // 清理旧的输出文件 (保留最近2小时内的文件)
     try {
-      const fs = require('fs');
-      
       if (existsSync(outputDir)) {
         const files = fs.readdirSync(outputDir);
         const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
@@ -262,11 +261,13 @@ export async function POST(request: NextRequest) {
       }
       // 尝试删除临时目录
       await new Promise<void>((resolve) => {
-        require('fs').rmdir(tempDir, (err: any) => {
-          if (err) {
-            logger.info(`Note: Could not delete temp directory: ${err.message}`);
-          }
-          resolve();
+        import('fs').then(fs => {
+          fs.rmdir(tempDir, (err: Error | null) => {
+            if (err) {
+              logger.info(`Note: Could not delete temp directory: ${err.message}`);
+            }
+            resolve();
+          });
         });
       });
     } catch (cleanupError) {

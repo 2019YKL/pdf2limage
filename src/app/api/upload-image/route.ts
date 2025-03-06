@@ -5,10 +5,10 @@ import { join } from 'path';
 
 // 日志函数
 const logger = {
-  info: (message: string, data?: any) => {
+  info: (message: string, data?: unknown) => {
     console.log(`[INFO][UPLOAD] ${message}`, data ? JSON.stringify(data) : '');
   },
-  error: (message: string, error: any) => {
+  error: (message: string, error: unknown) => {
     console.error(`[ERROR][UPLOAD] ${message}`, error);
     if (error instanceof Error) {
       console.error('Stack:', error.stack);

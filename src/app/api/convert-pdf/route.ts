@@ -7,10 +7,10 @@ import { v4 as uuidv4 } from 'uuid';
 
 // 日志函数
 const logger = {
-  info: (message: string, data?: any) => {
+  info: (message: string, data?: unknown) => {
     console.log(`[INFO][PDF2PNG] ${message}`, data ? JSON.stringify(data) : '');
   },
-  error: (message: string, error: any) => {
+  error: (message: string, error: unknown) => {
     console.error(`[ERROR][PDF2PNG] ${message}`, error);
     if (error instanceof Error) {
       console.error('Stack:', error.stack);
