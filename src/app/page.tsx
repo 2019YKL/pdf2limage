@@ -271,7 +271,7 @@ export default function Home() {
                 <p className="text-lg font-medium text-white">
                   {isDragActive ? "Drop your PDF here" : "Drag & drop your PDF"}
                 </p>
-                <button className="mt-2 px-6 py-2 bg-[#0084c7] text-white rounded-md hover:opacity-90 transition-all shadow-lg font-medium">
+                <button className="mt-2 px-6 py-2 bg-white/20 backdrop-blur-md text-white rounded-full hover:bg-white/30 transition-all border border-white/30">
                   Choose File
                 </button>
               </div>
@@ -294,10 +294,10 @@ export default function Home() {
                   <button
                     onClick={handleConversion}
                     disabled={isProcessing || !pdfjs}
-                    className={`px-6 py-3 rounded-md font-medium ${
+                    className={`px-6 py-3 rounded-full font-medium ${
                       isProcessing || !pdfjs
                         ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
-                        : 'bg-[#0084c7] text-white hover:opacity-90 shadow-lg'
+                        : 'bg-white/20 backdrop-blur-md text-white hover:bg-white/30 transition-all border border-white/30'
                     }`}
                   >
                     {isProcessing ? 'Processing...' : 'Convert'}
@@ -343,7 +343,7 @@ export default function Home() {
                 <a
                   href={stitchedImage}
                   download="stitched-image.png"
-                  className="inline-flex items-center px-6 py-3 bg-[#0084c7] text-white rounded-md hover:opacity-90 transition-all shadow-lg font-medium"
+                  className="inline-flex items-center px-6 py-3 bg-white/20 backdrop-blur-md text-white rounded-full hover:bg-white/30 transition-all border border-white/30"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

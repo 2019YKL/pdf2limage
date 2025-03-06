@@ -67,6 +67,30 @@ export async function POST(request: NextRequest) {
       await mkdir(outputDir, { recursive: true });
     }
 
+    // 清理旧的输出文件 (保留最近2小时内的文件)
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      
+      if (existsSync(outputDir)) {
+        const files = fs.readdirSync(outputDir);
+        const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+        
+        for (const file of files) {
+          const filePath = path.join(outputDir, file);
+          const stats = fs.statSync(filePath);
+          
+          if (stats.isFile() && stats.mtimeMs < twoHoursAgo) {
+            logger.info(`Cleaning up old output file: ${filePath}`);
+            fs.unlinkSync(filePath);
+          }
+        }
+      }
+    } catch (cleanupError) {
+      logger.error('Error during old files cleanup', cleanupError);
+      // 继续执行，不因清理错误而中断
+    }
+
     // Generate a unique ID for this stitched image
     const outputFileName = `stitched-${randomUUID()}.png`;
     const outputPath = join(outputDir, outputFileName);
