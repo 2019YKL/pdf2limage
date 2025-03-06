@@ -25,6 +25,13 @@ const logger = {
 
 // 改进清理临时文件的函数
 async function cleanupTempFiles(filePaths: string[]) {
+  // 在Vercel serverless环境中，我们不需要主动清理文件
+  // 部署到Vercel时，每个请求都会在独立的环境中运行，请求结束后环境会被销毁
+  if (process.env.VERCEL) {
+    logger.info('Running on Vercel, skipping file cleanup');
+    return;
+  }
+  
   for (const filePath of filePaths) {
     try {
       if (existsSync(filePath)) {
@@ -298,6 +305,11 @@ export async function POST(request: NextRequest) {
     } catch (cleanupError) {
       logger.error('Error during cleanup', cleanupError);
       // 继续执行，不因清理错误而中断响应
+    }
+
+    // 在Vercel环境中，暂时不清理文件
+    if (process.env.VERCEL) {
+      tempFilesToCleanup.length = 0;
     }
 
     // 返回stitched图像的URL和元数据

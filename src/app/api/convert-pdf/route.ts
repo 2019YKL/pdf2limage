@@ -20,6 +20,13 @@ const logger = {
 
 // 删除临时文件的辅助函数
 async function cleanupTempFiles(filePaths: string[]) {
+  // 在Vercel serverless环境中，我们不需要主动清理文件
+  // 部署到Vercel时，每个请求都会在独立的环境中运行，请求结束后环境会被销毁
+  if (process.env.VERCEL) {
+    logger.info('Running on Vercel, skipping file cleanup');
+    return;
+  }
+  
   for (const filePath of filePaths) {
     try {
       await unlink(filePath);
@@ -68,6 +75,11 @@ export async function POST(request: NextRequest) {
     const pdfDoc = await PDFDocument.load(pdfBuffer);
     const pageCount = pdfDoc.getPageCount();
     logger.info(`PDF loaded, page count: ${pageCount}`);
+    
+    // 在Vercel环境中，暂时不清理文件，让其他API能处理它们
+    if (process.env.VERCEL) {
+      tempFilesToCleanup.length = 0;
+    }
     
     return NextResponse.json({
       success: true,

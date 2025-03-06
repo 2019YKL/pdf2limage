@@ -65,13 +65,40 @@ export default function Home() {
       setProgress(0);
       setStitchedImage(null);
       
-      // Load the PDF file
+      // Step 1: 上传PDF文件到API进行处理
+      const pdfFormData = new FormData();
+      pdfFormData.append('pdf', file);
+      
+      const pdfResponse = await fetch('/api/convert-pdf', {
+        method: 'POST',
+        body: pdfFormData
+      });
+      
+      if (!pdfResponse.ok) {
+        let errorMsg = 'Failed to upload PDF';
+        try {
+          const errorData = await pdfResponse.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch (e) {
+          console.error('Error parsing error response:', e);
+        }
+        throw new Error(errorMsg);
+      }
+      
+      let pdfResult;
+      try {
+        pdfResult = await pdfResponse.json();
+      } catch (e) {
+        console.error('Error parsing PDF API response:', e);
+        throw new Error('Invalid response from server when uploading PDF');
+      }
+      
+      const { sessionId, pageCount: totalPages } = pdfResult;
+      setPageCount(totalPages);
+      
+      // Load the PDF file on client side for rendering
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-      
-      // Get total page count and set max to 30
-      const totalPages = pdf.numPages;
-      setPageCount(totalPages);
       
       // We'll convert all pages, but limit to 30 for processing
       const pagesToProcess = Math.min(totalPages, 30);
@@ -120,21 +147,15 @@ export default function Home() {
       
       // 获取lastpic.png并添加到图像数组的末尾 - 无论页数多少都添加
       try {
-        let lastPicPath = '/pic/lastpic.png'; // 原始路径
-        let response = await fetch(lastPicPath);
-        
-        // 如果原始路径失败，尝试备用路径
-        if (!response.ok) {
-          lastPicPath = '/lastpic.png';
-          response = await fetch(lastPicPath);
-        }
+        let lastPicPath = '/lastpic.png'; // 简化路径
+        const response = await fetch(lastPicPath);
         
         if (response.ok) {
           const lastPicBlob = await response.blob();
           formData.append('images', new File([lastPicBlob], 'lastpic.png', { type: 'image/png' }));
           console.log('成功添加lastpic.png到图像队列');
         } else {
-          console.error('Failed to fetch lastpic.png, tried paths:', '/pic/lastpic.png', '/lastpic.png');
+          console.error('Failed to fetch lastpic.png from:', lastPicPath);
         }
       } catch (error) {
         console.error('Error fetching lastpic.png:', error);
@@ -147,17 +168,43 @@ export default function Home() {
       // Send to API for stitching
       setProgress(95); // Almost done
       
-      const stitchResponse = await fetch('/api/stitch-images', {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (!stitchResponse.ok) {
-        const errorData = await stitchResponse.json();
-        throw new Error(`Stitching failed: ${errorData.error || 'Unknown error'}`);
+      let stitchResponse;
+      try {
+        stitchResponse = await fetch('/api/stitch-images', {
+          method: 'POST',
+          body: formData
+        });
+      } catch (e) {
+        console.error('Network error during stitch request:', e);
+        throw new Error('Network error when stitching images');
       }
       
-      const result = await stitchResponse.json();
+      if (!stitchResponse.ok) {
+        let errorMsg = 'Stitching failed';
+        try {
+          const errorData = await stitchResponse.text();
+          console.error('Stitch error response:', errorData);
+          try {
+            const jsonError = JSON.parse(errorData);
+            errorMsg = jsonError.error || errorMsg;
+          } catch {
+            errorMsg += `: ${errorData.substring(0, 100)}`;
+          }
+        } catch (e) {
+          console.error('Error parsing stitch error:', e);
+        }
+        throw new Error(errorMsg);
+      }
+      
+      let result;
+      try {
+        const responseText = await stitchResponse.text();
+        console.log('Raw stitch response:', responseText.substring(0, 200));
+        result = JSON.parse(responseText);
+      } catch (e) {
+        console.error('Error parsing stitch response:', e);
+        throw new Error('Invalid response from server when stitching images');
+      }
       
       setStitchedImage(result.imageUrl);
       setProgress(100);
