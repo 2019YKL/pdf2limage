@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { join } from 'path';
-import { writeFile, mkdir, readFile } from 'fs/promises';
+import { writeFile, mkdir, readFile, unlink } from 'fs/promises';
 import { existsSync, statSync } from 'fs';
 import sharp from 'sharp';
 import { randomUUID } from 'crypto';
@@ -22,24 +22,44 @@ const logger = {
   }
 };
 
-interface StitchRequest {
-  images: string[];
-}
-
 export async function POST(request: NextRequest) {
   logger.info('Received image stitching request');
   
   try {
-    logger.info('Parsing request body');
-    const { images } = await request.json() as StitchRequest;
+    // 处理 multipart/form-data 请求
+    const formData = await request.formData();
+    const imageFiles = formData.getAll('images') as File[];
+    const tempDirName = formData.get('tempDirName') as string;
+    const quality = parseInt(formData.get('quality') as string) || 90;
     
-    if (!images || !Array.isArray(images) || images.length === 0) {
-      logger.error('Invalid images array provided', { images });
+    if (!imageFiles || imageFiles.length === 0) {
+      logger.error('No image files provided', {});
       return NextResponse.json({ error: 'No images provided' }, { status: 400 });
     }
 
-    logger.info(`Processing ${images.length} images for stitching`, { imageUrls: images });
+    logger.info(`Processing ${imageFiles.length} images for stitching`);
 
+    // 创建临时目录保存上传的图片
+    const tempDir = join(process.cwd(), 'public', 'temp', tempDirName || randomUUID());
+    if (!existsSync(tempDir)) {
+      logger.info(`Creating temp directory: ${tempDir}`);
+      await mkdir(tempDir, { recursive: true });
+    }
+
+    // 保存上传的图片到临时目录
+    const savedImagePaths = await Promise.all(
+      imageFiles.map(async (file, index) => {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const filename = file.name;
+        const imagePath = join(tempDir, filename);
+        
+        logger.info(`Saving image ${index + 1}/${imageFiles.length}: ${imagePath}`);
+        await writeFile(imagePath, buffer);
+        
+        return imagePath;
+      })
+    );
+    
     // Create output directory if it doesn't exist
     const outputDir = join(process.cwd(), 'public', 'output');
     if (!existsSync(outputDir)) {
@@ -56,24 +76,23 @@ export async function POST(request: NextRequest) {
 
     // Load all the images
     logger.info('Loading image metadata');
-    const imageMetadataPromises = images.map(async (imagePath, index) => {
+    const imageMetadataPromises = savedImagePaths.map(async (imagePath, index) => {
       try {
-        const fullPath = join(process.cwd(), 'public', imagePath);
-        logger.info(`Reading image ${index + 1}/${images.length}: ${fullPath}`);
+        logger.info(`Reading image ${index + 1}/${savedImagePaths.length}: ${imagePath}`);
         
-        if (!existsSync(fullPath)) {
-          logger.error(`Image file does not exist: ${fullPath}`);
+        if (!existsSync(imagePath)) {
+          logger.error(`Image file does not exist: ${imagePath}`);
           throw new Error(`Image file not found: ${imagePath}`);
         }
         
-        const metadata = await sharp(fullPath).metadata();
+        const metadata = await sharp(imagePath).metadata();
         logger.info(`Image ${index + 1} metadata:`, { 
           width: metadata.width, 
           height: metadata.height,
           format: metadata.format
         });
         
-        return { path: fullPath, width: metadata.width, height: metadata.height };
+        return { path: imagePath, width: metadata.width, height: metadata.height };
       } catch (error) {
         logger.error(`Error processing image ${index + 1}: ${imagePath}`, error);
         throw error;
@@ -110,7 +129,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 渐进式图像压缩功能
-    async function createStitchedImage(quality = 100) {
+    async function createStitchedImage(quality = 90) {
       logger.info(`Attempting image stitching with quality: ${quality}`);
       
       const outputTempPath = `${outputPath}.temp.png`;
@@ -136,13 +155,7 @@ export async function POST(request: NextRequest) {
         // 文件大小符合要求，重命名为最终文件
         await writeFile(outputPath, await readFile(outputTempPath));
         // 删除临时文件
-        await new Promise<void>((resolve, reject) => {
-          const fs = require('fs');
-          fs.unlink(outputTempPath, (err: any) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
+        await unlink(outputTempPath);
         return { success: true, quality, fileSize };
       }
       
@@ -152,7 +165,7 @@ export async function POST(request: NextRequest) {
     // 二分查找法寻找最佳质量设置
     async function findOptimalQuality() {
       let low = MIN_QUALITY; // 最低质量
-      let high = 100; // 最高质量
+      let high = quality; // 从请求中获取的初始质量
       let bestQuality = low;
       let bestFileSize = 0;
       
@@ -199,36 +212,43 @@ export async function POST(request: NextRequest) {
       return { quality: MIN_QUALITY, fileSize: minResult.fileSize };
     }
 
-    // 创建图像并进行大小检查
-    logger.info('Starting image composition with automatic size optimization');
+    // 执行图像拼接和优化
+    logger.info('Starting image stitching process');
+    const compressionResult = await findOptimalQuality();
+    const sizeMB = (compressionResult.fileSize / 1024 / 1024).toFixed(2);
+    
+    logger.info(`Image stitching completed successfully with quality ${compressionResult.quality} and size ${sizeMB}MB`);
+    
+    // 清理临时文件
     try {
-      const optimizationResult = await findOptimalQuality();
-      
-      logger.info(`Stitched image saved successfully to: ${outputPath} with quality: ${optimizationResult.quality}, size: ${(optimizationResult.fileSize / 1024 / 1024).toFixed(2)}MB`);
-
-      return NextResponse.json({ 
-        stitchedImage: publicPath,
-        width: maxWidth,
-        height: totalHeight,
-        quality: optimizationResult.quality,
-        sizeBytes: optimizationResult.fileSize,
-        sizeMB: (optimizationResult.fileSize / 1024 / 1024).toFixed(2)
+      for (const imagePath of savedImagePaths) {
+        await unlink(imagePath);
+      }
+      // 尝试删除临时目录
+      await new Promise<void>((resolve) => {
+        require('fs').rmdir(tempDir, (err: any) => {
+          if (err) {
+            logger.info(`Note: Could not delete temp directory: ${err.message}`);
+          }
+          resolve();
+        });
       });
-    } catch (stitchError) {
-      logger.error('Error during image composition', stitchError);
-      return NextResponse.json(
-        { error: 'Failed to compose stitched image', details: stitchError.message },
-        { status: 500 }
-      );
+    } catch (cleanupError) {
+      logger.error('Error during cleanup', cleanupError);
+      // 继续执行，不因清理错误而中断响应
     }
+
+    // 返回stitched图像的URL和元数据
+    return NextResponse.json({ 
+      imageUrl: publicPath,
+      quality: compressionResult.quality,
+      fileSize: sizeMB
+    });
+
   } catch (error) {
-    logger.error('Image stitching error', error);
+    logger.error('Error processing request', error);
     return NextResponse.json(
-      { 
-        error: 'Failed to stitch images together', 
-        details: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined
-      },
+      { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
