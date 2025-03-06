@@ -159,7 +159,9 @@ export async function POST(request: NextRequest) {
     const compositeImages: CompositeImage[] = [];
     let currentY = 0;
 
-    for (const [index, img] of imageMetadata.entries()) {
+    // 使用常规for循环代替for...of循环，避免迭代器兼容性问题
+    for (let i = 0; i < imageMetadata.length; i++) {
+      const img = imageMetadata[i];
       // Center images that are smaller than maxWidth
       const x = Math.floor((maxWidth - (img.width || 0)) / 2);
       
@@ -169,7 +171,7 @@ export async function POST(request: NextRequest) {
         left: x
       });
       
-      logger.info(`Positioned image ${index + 1} at x:${x}, y:${currentY}`);
+      logger.info(`Positioned image ${i + 1} at x:${x}, y:${currentY}`);
       currentY += img.height || 0;
     }
 
