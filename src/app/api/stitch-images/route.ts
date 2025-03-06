@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
         }
       })
       .composite(compositeImages)
+      .flatten({ background: { r: 255, g: 255, b: 255 } }) // 确保背景是纯白色
       .png({ quality })
       .toFile(outputTempPath);
       
